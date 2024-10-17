@@ -1,0 +1,9 @@
+load mmc 0:2 $loadaddr boot/loader/uEnv.txt
+env import -t $loadaddr $filesize
+
+setenv bootargs "${bootargs} coherent_pool=1M 8250.nr_uarts=1 snd_bcm2835.enable_headphones=0 cgroup_disable=memory bcm2708_fb.fbwidth=656 bcm2708_fb.fbheight=416 bcm2708_fb.fbswap=1 vc_mem.mem_base=0x3ec00000 vc_mem.mem_size=0x40000000 console=ttyS0,115200"
+
+ext4load mmc 0:2 ${kernel_addr_r} ${kernel_image}
+ext4load mmc 0:2 ${ramdisk_addr_r} ${ramdisk_image}
+
+booti ${kernel_addr_r} ${ramdisk_addr_r} ${fdt_addr}

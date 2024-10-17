@@ -1,0 +1,80 @@
+# syntax = devthefuture/dockerfile-x
+
+###
+### STAGE 1 - BUILD
+###
+FROM ./Dockerfile.builder AS build
+
+ARG KERNEL_BRANCH="rpi-6.6.y"
+ARG UBOOT_BRANCH="v2024.10"
+
+# clone rpi kernel
+RUN git clone --depth=1 --branch $KERNEL_BRANCH \
+      https://github.com/raspberrypi/linux.git
+
+# 64-bit support
+ARG KERNEL_IMAGE="Image"
+ENV ARCH="arm64"
+
+# build kernel, modules and dtbs
+RUN cd linux && \
+    make O=build bcm2711_defconfig && \
+    make O=build -j$(nproc) $KERNEL_IMAGE modules dtbs && \
+    make O=build INSTALL_MOD_PATH=modules modules_install
+
+# prepare kernel build artifacts
+RUN cd linux && \
+    rm -r build/modules/lib/modules/*/build && \
+    mkdir -p install/overlays && \
+    cp build/arch/${ARCH}/boot/dts/broadcom/*.dtb install && \
+    cp build/arch/${ARCH}/boot/dts/overlays/*.dtb* install/overlays && \
+    cp arch/${ARCH}/boot/dts/overlays/README install/overlays && \
+    cp build/arch/${ARCH}/boot/${KERNEL_IMAGE} install
+
+# clone & build u-boot
+RUN git clone --depth=1 --branch $UBOOT_BRANCH \
+      https://source.denx.de/u-boot/u-boot.git
+RUN cd u-boot && \
+    make rpi_3_b_plus_defconfig && \
+    make -j$(nproc)
+COPY rpi/boot.cmd-ostree.in u-boot/boot.cmd
+RUN cd u-boot && \
+    tools/mkenvimage -s 4096 -o uboot.env include/generated/env.txt && \
+    tools/mkimage -A arm64 -T script -C none -n "Boot script" -d boot.cmd boot.scr
+
+# prepare u-boot build artifacts
+RUN cd u-boot && mkdir install && \
+    cp u-boot.bin install && \
+    cp uboot.env install && \
+    cp boot.scr install
+
+# prepare rpi boot files
+RUN git clone --depth=1 https://github.com/raspberrypi/firmware.git
+RUN cp firmware/boot/bootcode.bin u-boot/install && \
+    cp firmware/boot/fixup*.dat u-boot/install && \
+    cp firmware/boot/start*.elf u-boot/install
+COPY rpi/config.txt u-boot/install
+# NOTE: not used with ostree!
+COPY rpi/cmdline.txt u-boot/install
+
+# create linux kernel build archives
+RUN cd linux && \
+    KERNEL_VER=$(git branch --show-current) && \
+    tar czf kernel-modules-${KERNEL_VER}.tar.gz -C build/modules/lib/modules . && \
+    tar czf kernel-artifacts-${KERNEL_VER}.tar.gz -C install .
+
+# create boot files archive
+RUN cd u-boot && \
+    UBOOT_VER=$(git --no-pager tag -l) && \
+    tar czf boot-artifacts-${UBOOT_VER}.tar.gz -C install .
+
+###
+### STAGE 2 - EXPORT BUILD ARTIFACTS
+###
+FROM scratch
+
+# copy build artifacts
+COPY --from=build /linux/kernel-modules-*.tar.gz /
+COPY --from=build /linux/kernel-artifacts-*.tar.gz /
+COPY --from=build /u-boot/boot-artifacts-*.tar.gz /
+
