@@ -78,4 +78,3 @@ FROM scratch
 COPY --from=build /linux/kernel-modules-*.tar.gz /
 COPY --from=build /linux/kernel-artifacts-*.tar.gz /
 COPY --from=build /u-boot/boot-artifacts-*.tar.gz /
-
