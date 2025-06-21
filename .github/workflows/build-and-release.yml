@@ -1,0 +1,32 @@
+# .github/workflows/docker-arm64.yml
+name: Build Docker ARM64
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  docker-arm64:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set up QEMU (for ARM64 emulation)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build Dockerfile.rpi3 and export artifacts
+        run: |
+          docker buildx build \
+            --platform linux/arm64 \
+            -f Dockerfile.rpi3 \
+            -o type=local,dest=./output \
+            .
+
+      - name: List built artifacts
+        run: ls -al ./output
