@@ -35,18 +35,20 @@ RUN cd linux && \
 
 # clone & build u-boot
 RUN git clone --depth=1 --branch $UBOOT_BRANCH $UBOOT_REPO
+COPY machine/$MACHINE/*.cfg u-boot
 RUN cd u-boot && \
     make $UBOOT_DEFCONFIG && \
+    for i in *.cfg; do echo >> .config && cat "$i" >> .config; done && \
     make -j$(nproc)
 COPY machine/$MACHINE/boot.cmd-ostree.in u-boot/boot.cmd
 RUN cd u-boot && \
-    tools/mkenvimage -s 4096 -o uboot.env include/generated/env.txt && \
+    # tools/mkenvimage -s 4096 -o uboot.env include/generated/env.txt && \
     tools/mkimage -A arm64 -T script -C none -n "Boot script" -d boot.cmd boot.scr
 
 # prepare u-boot build artifacts
 RUN cd u-boot && mkdir install && \
     cp u-boot.bin install && \
-    cp uboot.env install && \
+    # cp uboot.env install && \
     cp boot.scr install
 
 # prepare rpi boot files
