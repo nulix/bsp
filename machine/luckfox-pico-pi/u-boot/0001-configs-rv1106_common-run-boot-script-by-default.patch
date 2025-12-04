@@ -1,0 +1,35 @@
+From d4df17296ab84bc4e6126847315c2fcde7efef56 Mon Sep 17 00:00:00 2001
+From: Matija Tudan <matija.tudan@nulix.hr>
+Date: Fri, 14 Nov 2025 16:14:35 +0000
+Subject: [PATCH 1/1] configs: rv1106_common: run boot script by default
+
+If custom U-Boot script (boot.scr) is available, run it by default on boot.
+
+On Luckfox Pico Pi, the eMMC is the first MMC device (mmc 0):
+=> mmc list
+mmc@ffa90000: 0 (eMMC)
+mmc@ffaa0000: 1
+
+Signed-off-by: Matija Tudan <matija.tudan@nulix.hr>
+---
+ include/configs/rv1106_common.h | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/include/configs/rv1106_common.h b/include/configs/rv1106_common.h
+index dc927a8f362..dce9725ab07 100644
+--- a/include/configs/rv1106_common.h
++++ b/include/configs/rv1106_common.h
+@@ -93,6 +93,10 @@
+ 	"boot_fit;"
+ #else
+ #define RKIMG_BOOTCOMMAND		\
++	"mmc dev 0;" \
++	"if fatload mmc 0:1 ${scriptaddr} boot.scr; then " \
++		"source ${scriptaddr}; " \
++	"fi; " \
+ 	"boot_fit;"			\
+ 	"boot_android ${devtype} ${devnum};"
+ #endif
+-- 
+2.43.7
+

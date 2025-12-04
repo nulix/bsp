@@ -1,0 +1,61 @@
+From 2e7365518acdb8fb6e9be332c8a6c57b457188d9 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?S=C3=A9bastien=20Szymanski?=
+ <sebastien.szymanski@armadeus.com>
+Date: Fri, 22 Mar 2019 09:33:52 +0100
+Subject: [PATCH] fs: ext4: do not write on filesystem with metadata_csum
+ feature
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+U-Boot doesn't support metadata_csum feature. Writing to filesystem with
+metadata_csum feature makes the filesystem corrupted and unbootable by
+Linux:
+
+[    2.527495] EXT4-fs (mmcblk0p2): ext4_check_descriptors: Checksum for group 0 failed (52188!=0)
+[    2.537421] EXT4-fs (mmcblk0p2): ext4_check_descriptors: Checksum for group 1 failed (5262!=0)
+...
+[    2.653308] EXT4-fs (mmcblk0p2): ext4_check_descriptors: Checksum for group 14 failed (42611!=0)
+[    2.662179] EXT4-fs (mmcblk0p2): ext4_check_descriptors: Checksum for group 15 failed (21527!=0)
+[    2.687920] JBD2: journal checksum error
+[    2.691982] EXT4-fs (mmcblk0p2): error loading journal
+[    2.698292] VFS: Cannot open root device "mmcblk0p2" or unknown-block(179,2): error -74
+
+Don't write to filesystem with meatadata_csum feature to not corrupt the
+filesystem.
+
+Signed-off-by: Sébastien Szymanski <sebastien.szymanski@armadeus.com>
+---
+ fs/ext4/ext4_write.c | 6 ++++++
+ include/ext4fs.h     | 1 +
+ 2 files changed, 7 insertions(+)
+
+diff --git a/fs/ext4/ext4_write.c b/fs/ext4/ext4_write.c
+index a7f543f7df7d..4eb77c327ef3 100644
+--- a/fs/ext4/ext4_write.c
++++ b/fs/ext4/ext4_write.c
+@@ -864,6 +864,12 @@ int ext4fs_write(const char *fname, unsigned char *buffer,
+ 		printf("error in File System init\n");
+ 		return -1;
+ 	}
++
++	if (le32_to_cpu(fs->sb->feature_ro_compat) & EXT4_FEATURE_RO_COMPAT_METADATA_CSUM) {
++		printf("Unsupported feature metadata_csum found, not writing.\n");
++		return -1;
++	}
++
+ 	inodes_per_block = fs->blksz / fs->inodesz;
+ 	parent_inodeno = ext4fs_get_parent_inode_num(fname, filename, F_FILE);
+ 	if (parent_inodeno == -1)
+diff --git a/include/ext4fs.h b/include/ext4fs.h
+index bb5563910725..24210113411a 100644
+--- a/include/ext4fs.h
++++ b/include/ext4fs.h
+@@ -32,6 +32,7 @@
+ #define EXT4_EXTENTS_FL		0x00080000 /* Inode uses extents */
+ #define EXT4_EXT_MAGIC			0xf30a
+ #define EXT4_FEATURE_RO_COMPAT_GDT_CSUM	0x0010
++#define EXT4_FEATURE_RO_COMPAT_METADATA_CSUM 0x0400
+ #define EXT4_FEATURE_INCOMPAT_EXTENTS	0x0040
+ #define EXT4_FEATURE_INCOMPAT_64BIT	0x0080
+ #define EXT4_INDIRECT_BLOCKS		12

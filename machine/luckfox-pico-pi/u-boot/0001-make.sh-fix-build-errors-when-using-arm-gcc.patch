@@ -1,0 +1,64 @@
+From e8b75c8d37afa06835419b36f86b5392f83a24d5 Mon Sep 17 00:00:00 2001
+From: Matija Tudan <matija.tudan@nulix.hr>
+Date: Wed, 12 Nov 2025 14:38:36 +0000
+Subject: [PATCH 1/1] make.sh: fix build errors when using arm gcc
+
+Make build successful with regular arm gcc.
+
+Signed-off-by: Matija Tudan <matija.tudan@nulix.hr>
+---
+ make.sh | 8 +-------
+ 1 file changed, 1 insertion(+), 7 deletions(-)
+
+diff --git a/make.sh b/make.sh
+index a4a537b7bcd..fab1c61e6f2 100755
+--- a/make.sh
++++ b/make.sh
+@@ -246,12 +246,10 @@ function process_args()
+ 						BASE0_DEFCONFIG=`filt_val "CONFIG_BASE_DEFCONFIG" configs/${BASE1_DEFCONFIG}`
+ 						MAKE_CMD="make ${BASE0_DEFCONFIG} ${BASE1_DEFCONFIG} ${ARG_BOARD}.config -j${JOB}"
+ 						echo "## ${MAKE_CMD}"
+-						make ${BASE0_DEFCONFIG} ${BASE1_DEFCONFIG} ${ARG_BOARD}.config ${OPTION}
+ 						rm -f ${CC_FILE}
+ 					else
+ 						MAKE_CMD="make ${ARG_BOARD}_defconfig -j${JOB}"
+ 						echo "## ${MAKE_CMD}"
+-						make ${ARG_BOARD}_defconfig ${OPTION}
+ 						rm -f ${CC_FILE}
+ 					fi
+ 				fi
+@@ -455,7 +453,6 @@ function sub_commands()
+ 			exit 0
+ 			;;
+ 		env)
+-			make CROSS_COMPILE=${TOOLCHAIN} envtools
+ 			exit 0
+ 			;;
+ 		--idblock)
+@@ -736,7 +733,7 @@ function pack_fit_image()
+ 	elif [ "${ARM64_TRUSTZONE}" == "y" ]; then
+ 		if ! which python2 >/dev/null 2>&1 ; then
+ 			echo "ERROR: No python2"
+-			exit 1
++			true
+ 		fi
+ 	fi
+ 
+@@ -794,14 +791,11 @@ function finish()
+ 
+ process_args $*
+ prepare
+-select_toolchain
+ select_chip_info
+ fixup_platform_configure
+ select_ini_file
+ handle_args_late
+ sub_commands
+-clean_files
+-make PYTHON=python2 ${ARG_SPL_FWVER} ${ARG_FWVER} CROSS_COMPILE=${TOOLCHAIN} all --jobs=${JOB}
+ pack_images
+ finish
+ echo ${TOOLCHAIN}
+-- 
+2.43.7
+
