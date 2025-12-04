@@ -1,0 +1,111 @@
+# syntax = devthefuture/dockerfile-x
+
+###
+### STAGE 1 - build
+###
+FROM ./Dockerfile.builder AS build
+
+ARG MACHINE
+ARG ARCH
+ARG UBOOT_REPO
+ARG UBOOT_BRANCH
+ARG UBOOT_REV
+ARG UBOOT_DEFCONFIG
+ARG KERNEL_REPO
+ARG KERNEL_BRANCH
+ARG KERNEL_REV
+ARG KERNEL_DEFCONFIG
+ARG RKBIN_REPO="https://github.com/rockchip-linux/rkbin.git"
+ARG RKBIN_BRANCH="master"
+ARG RKBIN_SRC_REV="74213af1e952c4683d2e35952507133b61394862"
+
+ENV ARCH=${ARCH}
+ENV CROSS_COMPILE=${ARCH}-none-eabi-
+
+# install build dependencies
+RUN apk add --no-cache gcc-arm-none-eabi u-boot-tools python3 bash dtc openssl coreutils
+
+# clone rockchip kernel
+RUN git clone --depth=1 --branch $KERNEL_BRANCH $KERNEL_REPO && \
+    cd kernel && \
+    git checkout $KERNEL_REV
+
+# build kernel, modules and dtb
+COPY machine/$MACHINE/linux/$KERNEL_DEFCONFIG kernel/arch/arm/configs/
+COPY machine/$MACHINE/linux/*.dts* kernel/arch/arm/boot/dts/rockchip/
+RUN cd kernel && \
+    make O=build -j$(nproc) $KERNEL_DEFCONFIG && \
+    make O=build -j$(nproc) BOOT_ITS=$(pwd)/boot.its rv1106g-luckfox-pico-pi.img && \
+    make O=build -j$(nproc) modules && \
+    make O=build -j$(nproc) INSTALL_MOD_STRIP=1 INSTALL_MOD_PATH=modules modules_install
+
+# prepare kernel build artifacts
+RUN cd kernel && \
+    rm -r build/modules/lib/modules/*/build && \
+    mkdir install && \
+    cp build/boot.img install && \
+    cp build/arch/${ARCH}/boot/dts/rockchip/*.dtb install && \
+    cp build/arch/${ARCH}/boot/zImage install
+
+# clone u-boot
+RUN git clone --depth=1 --branch $UBOOT_BRANCH $UBOOT_REPO && \
+    cd u-boot && \
+    git checkout $UBOOT_REV
+RUN git clone --depth=1 --branch $RKBIN_BRANCH $RKBIN_REPO && \
+    cd rkbin && \
+    git checkout $RKBIN_SRC_REV
+
+# build u-boot
+COPY machine/$MACHINE/u-boot/*.patch u-boot
+COPY machine/$MACHINE/u-boot/*.config u-boot/defconfig/
+COPY machine/$MACHINE/u-boot/env.txt u-boot
+COPY machine/$MACHINE/u-boot/boot.cmd.in u-boot/boot.cmd
+RUN cd u-boot && \
+    git am *.patch && \
+    make -j$(nproc) $UBOOT_DEFCONFIG rk-emmc.config && \
+    scripts/kconfig/merge_config.sh -m .config defconfig/*.config && \
+    make -j$(nproc) olddefconfig
+RUN cd u-boot && \
+    export KCFLAGS="-Wno-error=enum-int-mismatch -Wno-error=address -Wno-error=maybe-uninitialized" && \
+    make -j$(nproc)
+RUN cd u-boot && \
+    UBOOT_ENV_SIZE=$(grep -r "^CONFIG_ENV_SIZE=" .config | cut -d "=" -f 2) && \
+    tools/mkenvimage -s ${UBOOT_ENV_SIZE} -p 0x0 -o uboot.env env.txt
+RUN cd u-boot && \
+    ./make.sh --spl-new ../rkbin/RKBOOT/RV1106MINIALL.ini
+RUN cd u-boot && \
+    tools/mkimage -A ${ARCH} -T script -C none -n "Boot script" -d boot.cmd boot.scr
+
+# prepare u-boot build artifacts
+RUN cd u-boot && mkdir install && \
+    # cp -v uboot.env install && \
+    cp -v *_idblock_v*.img install/idblock.img && \
+    cp -v *_download_v*.bin install/download.bin && \
+    cp -v uboot.img install && \
+    cp -v boot.scr install
+
+# create linux kernel build archives
+RUN cd kernel && \
+    K_VER=$(grep "^VERSION =" Makefile | cut -d ' ' -f 3) && \
+    K_PATCH=$(grep "^PATCHLEVEL =" Makefile | cut -d ' ' -f 3) && \
+    K_SUB=$(grep "^SUBLEVEL =" Makefile | cut -d ' ' -f 3) && \
+    KERNEL_VER=${K_VER}.${K_PATCH}.${K_SUB} && \
+    tar czf kernel-modules-${KERNEL_VER}.tar.gz -C build/modules/lib/modules . && \
+    tar czf kernel-artifacts-${KERNEL_VER}.tar.gz -C install .
+
+# create boot files archive
+RUN cd u-boot && \
+    U_VER=$(grep "^VERSION =" Makefile | cut -d ' ' -f 3) && \
+    U_PATCH=$(grep "^PATCHLEVEL =" Makefile | cut -d ' ' -f 3) && \
+    UBOOT_VER=${U_VER}.${U_PATCH} && \
+    tar czf boot-artifacts-${UBOOT_VER}.tar.gz -C install .
+
+###
+### STAGE 2 - export build artifacts
+###
+FROM scratch
+
+# copy build artifacts
+COPY --from=build kernel/kernel-modules-*.tar.gz /
+COPY --from=build kernel/kernel-artifacts-*.tar.gz /
+COPY --from=build u-boot/boot-artifacts-*.tar.gz /
