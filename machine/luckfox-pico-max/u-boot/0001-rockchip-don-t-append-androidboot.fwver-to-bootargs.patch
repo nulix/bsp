@@ -1,0 +1,31 @@
+From a1d2af1b59279fd78cfb7d6c9ccc90c71f3d5b59 Mon Sep 17 00:00:00 2001
+From: Matija Tudan <matija.tudan@nulix.hr>
+Date: Wed, 12 Nov 2025 15:11:38 +0000
+Subject: [PATCH 1/1] rockchip: don't append androidboot.fwver to bootargs
+
+Skip adding androidboot.fwver to bootargs by default since
+this will break the ostree-prepare-root in initramfs.
+
+Signed-off-by: Matija Tudan <matija.tudan@nulix.hr>
+---
+ arch/arm/mach-rockchip/board.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/arch/arm/mach-rockchip/board.c b/arch/arm/mach-rockchip/board.c
+index e5445af7390..a7518d4258a 100644
+--- a/arch/arm/mach-rockchip/board.c
++++ b/arch/arm/mach-rockchip/board.c
+@@ -1262,8 +1262,10 @@ static void bootargs_add_fwver(bool verbose)
+ 		}
+ 		if (verbose)
+ 			printf("## fwver: %s\n\n", fwver);
++#ifdef FW_VER
+ 		env_update("bootargs", fwver);
+ 		env_set("fwver", fwver + strlen("androidboot."));
++#endif
+ 	}
+ out:
+ 	if (list1)
+-- 
+2.43.7
+
